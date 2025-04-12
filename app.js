@@ -1,4 +1,4 @@
-//jshint esversion:6
+require('dotenv').config();
 const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
@@ -8,6 +8,8 @@ const session=require('express-session');
 const passport=require('passport');
 const passportLocalMongoose=require('passport-local-mongoose');
 const app = express(); 
+var GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require('mongoose-findorcreate');
 //const bcrypt = require("bcrypt");
 
 
@@ -23,25 +25,63 @@ app.use(passport.session());
 mongoose.connect("mongodb://127.0.0.1:27017/myDatabase");
 const UserSchema=new mongoose.Schema({
   email:String,
-  password:String
+  password:String, 
+  googleId: String,
+  secret:String
 });
-
-const secret="Thisisourlittlesecret.";
-//UserSchema.plugin(encrypt,{secret:secret,encryptedFields:["password"]});
-
-UserSchema.plugin(passportLocalMongoose);
-const User=new mongoose.model("User",UserSchema);
-passport.use(User.createStrategy());
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
-
 app.use(bodyParser.urlencoded({extended: true}));
 app.set('view engine', 'ejs');
 app.use(express.static("public"));
 
+const secret="Thisisourlittlesecret.";
+//UserSchema.plugin(encrypt,{secret:secret,encryptedFields:["password"]});
+
+UserSchema.plugin(passportLocalMongoose,{
+  usernameField: "email"
+});
+
+UserSchema.plugin(findOrCreate);
+const User=new mongoose.model("User",UserSchema);
+passport.use(User.createStrategy());
+
+passport.serializeUser(function(user, done) {
+  done(null, user.id);
+}
+);
+
+passport.deserializeUser( function(id, done) {
+  User.findById(id)
+    .then(user => done(null, user))
+    .catch(err => done(err));
+});
+
+passport.use(new GoogleStrategy({
+  clientID: process.env.CLIENT_ID,
+  clientSecret: process.env.CLIENT_SECRET,
+  callbackURL: "http://localhost:3000/auth/google/secrets"
+},
+function(accessToken, refreshToken, profile, cb) {
+  console.log(profile);
+  User.findOrCreate({ googleId: profile.id },   { username: profile.displayName }, function (err, user) {
+    return cb(err, user);
+  });
+}
+));
+
+
 app.get("/", function(req, res){
   res.render("home");
 });
+
+app.get("/auth/google",
+  passport.authenticate("google", { scope: ["profile"] })
+);
+app.get("/auth/google/secrets",
+  passport.authenticate("google", { failureRedirect: "/login" }),
+  function(req, res) {
+    // Successful authentication, redirect to secrets.
+    res.redirect("/secrets");
+  });
 
 app.get("/login", function(req, res){
   res.render("login");
@@ -83,15 +123,15 @@ app.post("/register", function(req, res){
   });
 });
 
-app.get("/secrets", function(req, res){
-  if(req.isAuthenticated()){
-    res.render("secrets");
+app.get("/secrets", async function(req, res) {
+  try {
+    const foundUsers = await User.find({ secret: { $ne: null } });
+    res.render("secrets", { usersWithSecrets: foundUsers });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error retrieving secrets.");
   }
-  else{
-    res.redirect("/login");
-  }
-}
-);
+});
 
 /*app.post("/login", async function (req, res) {
 
@@ -140,6 +180,41 @@ app.post("/login", function(req, res){
     }
   });
 });
+
+app.get("/submit", function(req, res){
+  if(req.isAuthenticated()){
+    res.render("submit");
+  }else{
+    res.redirect("/login");
+  }
+}
+);
+
+app.post("/submit", async function(req, res) {
+  const submittedSecret = req.body.secret;
+
+  try {
+    let foundUser;
+
+    if (req.user.googleId) {
+      foundUser = await User.findOne({ googleId: req.user.googleId });
+    } else {
+      foundUser = await User.findById(req.user._id);
+    }
+
+    if (foundUser) {
+      foundUser.secret = submittedSecret;
+      await foundUser.save();
+      res.redirect("/secrets");
+    } else {
+      res.status(404).send("User not found.");
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Something went wrong.");
+  }
+});
+
 
 app.get("/logout", function(req, res){
   req.logout(function(err) {
