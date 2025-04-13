@@ -91,25 +91,11 @@ app.get("/register", function(req, res){
     res.render("register");
 });
 
-/*app.post("/register", async function(req, res){
-  //const hashedPassword = await bcrypt.hash(req.body.password, 10);
+
   
-  try {
-    const newUser = new User({
-      email: req.body.username,
-      password:req.body.password,
-    });
 
-    await newUser.save(); // ✅ No callback needed
-    res.render("secrets");
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Error saving user.");
-  }
-});
-*/ 
 
-//The above code is not longer needed as we are using passport-local-mongoose
+
 app.post("/register", function(req, res){
   User.register({username:req.body.username},req.body.password,function(err,user){
     if(err){
@@ -133,38 +119,7 @@ app.get("/secrets", async function(req, res) {
   }
 });
 
-/*app.post("/login", async function (req, res) {
 
-  const username = req.body.username;
-  const password = req.body.password;
-
-  try {
-    console.log("Login attempt for:", username);
-
-    const foundUser = await User.findOne({ email: username });
-
-    if (!foundUser) {
-      console.log("User not found!");
-      return res.status(404).send("User not found");
-    }
-
-    console.log("User found:", foundUser.email);
-
-    // Check password using bcrypt
-    // const isMatch = await bcrypt.compare(password, foundUser.password);
-
-    if (foundUser.password === password) {
-      console.log("Password match! Rendering secrets page...");
-      res.render("secrets");
-    } else {
-      console.log("Incorrect password!");
-      res.status(401).send("Incorrect password");
-    }
-  } catch (error) {
-    console.error("Login Error:", error);
-    res.status(500).send("Internal Server Error");
-  }
-});*/
 app.post("/login", function(req, res){
   const user=new User({
     username:req.body.username,
@@ -225,3 +180,5 @@ app.get("/logout", function(req, res){
 app.listen(3000, function(){
   console.log("Server started on port 3000");
 });
+
+//adding some comments to test feature branch 
